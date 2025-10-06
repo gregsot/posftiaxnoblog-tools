@@ -10,24 +10,21 @@ document.addEventListener("DOMContentLoaded", function () {
     maxside: document.getElementById("imgc-maxside")
   };
 
-  if (!els.file || !els.drop) return;
+  let selectedFiles = [];
 
-  // Ενημέρωση ποιότητας live
+  // ενημέρωση slider ποιότητας
   els.quality.addEventListener("input", () => {
     els.qval.textContent = els.quality.value + "%";
   });
 
-  // Επιλογή αρχείων
+  // επιλογή αρχείων
   els.browse.onclick = () => els.file.click();
-
-  let selectedFiles = [];
-
   els.file.onchange = (e) => {
-    selectedFiles = Array.from(e.target.files).filter(f => f.type.startsWith("image/"));
-    showSelected();
+    selectedFiles = Array.from(e.target.files);
+    showList();
   };
 
-  // Drag & Drop
+  // drag & drop
   ["dragenter", "dragover"].forEach(ev =>
     els.drop.addEventListener(ev, e => {
       e.preventDefault();
@@ -42,75 +39,72 @@ document.addEventListener("DOMContentLoaded", function () {
       els.drop.classList.remove("imgc-hover");
     })
   );
-  els.drop.ondrop = (e) => {
-    selectedFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
-    showSelected();
+  els.drop.ondrop = e => {
+    selectedFiles = Array.from(e.dataTransfer.files);
+    showList();
   };
 
-  function showSelected() {
+  function showList() {
     els.results.innerHTML = "";
     if (!selectedFiles.length) return;
     const list = document.createElement("ul");
-    list.style.listStyle = "none";
-    list.style.padding = "0";
     selectedFiles.forEach(f => {
       const li = document.createElement("li");
       li.textContent = f.name + " (" + Math.round(f.size / 1024) + " KB)";
       list.appendChild(li);
     });
     els.results.appendChild(list);
-
-    // Κουμπί συμπίεσης
     const btn = document.createElement("button");
-    btn.textContent = "Συμπίεση Εικόνες";
+    btn.textContent = "Συμπίεση εικόνων";
     btn.className = "imgc-btn download";
     btn.onclick = () => compressAll();
     els.results.appendChild(btn);
   }
 
   async function compressAll() {
-    if (!selectedFiles.length) return;
-    els.results.innerHTML = "Συμπίεση...";
-    const zip = new JSZip();
     const format = els.format.value;
     const quality = parseInt(els.quality.value) / 100;
     const maxSide = parseInt(els.maxside.value) || 0;
 
-    for (const file of selectedFiles) {
-      const out = await compressImage(file, format, quality, maxSide);
-      const blobData = await fetch(out.url).then(r => r.blob());
-      zip.file(out.name, blobData);
-    }
+    els.results.innerHTML = "Συμπίεση...";
+    const zip = new JSZip();
 
-    els.results.innerHTML = "✅ Έτοιμο!";
+    for (const file of selectedFiles) {
+      const out = await compressOne(file, format, quality, maxSide);
+      const blob = await fetch(out.url).then(r => r.blob());
+      zip.file(out.name, blob);
+    }
 
     const zipBtn = document.createElement("button");
     zipBtn.textContent = "Κατέβασμα όλων σε ZIP";
     zipBtn.className = "imgc-btn download";
     zipBtn.onclick = async () => {
-      const content = await zip.generateAsync({ type: "blob" });
-      const zipUrl = URL.createObjectURL(content);
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = zipUrl;
+      a.href = url;
       a.download = "compressed_images.zip";
       a.click();
-      URL.revokeObjectURL(zipUrl);
+      URL.revokeObjectURL(url);
     };
+    els.results.innerHTML = "✅ Ολοκληρώθηκε<br/>";
     els.results.appendChild(zipBtn);
   }
 
-  async function compressImage(file, format, quality, maxSide) {
+  async function compressOne(file, format, quality, maxSide) {
     const img = new Image();
     img.src = URL.createObjectURL(file);
     await img.decode();
 
     let w = img.width, h = img.height;
     if (maxSide > 0 && (w > maxSide || h > maxSide)) {
-      if (w > h) { h *= maxSide / w; w = maxSide; } else { w *= maxSide / h; h = maxSide; }
+      if (w > h) { h *= maxSide / w; w = maxSide; }
+      else { w *= maxSide / h; h = maxSide; }
     }
 
     const canvas = document.createElement("canvas");
-    canvas.width = w; canvas.height = h;
+    canvas.width = w;
+    canvas.height = h;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(img, 0, 0, w, h);
 
